@@ -9,10 +9,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.models as models
 import torchvision.transforms as transforms
-import asyncio
 
 warnings.filterwarnings("ignore")
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 imsize = config.imsize
 result = {}
 
