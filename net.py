@@ -1,3 +1,7 @@
+"""\file net.py
+
+    Нейросеть переноса стиля
+"""
 import os
 import copy
 import torch
@@ -24,28 +28,35 @@ loader = transforms.Compose([
         transforms.Resize((imsize, imsize)),
         transforms.ToTensor()])
 
-
+"""\brief Загрузка модели
+"""
 def download_cnn():
     cnn = models.vgg19(pretrained=True).features.to(device).eval()
     return cnn
 
 
+"""\brief Загрузка изображений
+    
+    Загрузка изображений в специальные перменные и перевод на видеокарту.
+"""
 def image_loader(name, size):
-    # image = Image.fromstring('RGB', size, byte_image)
     image = Image.open(name)
     image = loader(image).unsqueeze(0)
     os.remove(name)
     return image.to(device, torch.float)
 
 
+"""\brief Матрица Грама
+"""
 def gram_matrix(input):
     a, b, c, d = input.size()
     features = input.view(a * b, c * d)
     G = torch.mm(features, features.t())
-
     return G.div(a * b * c * d)
 
 
+"""\brief Класс расчёта ошибки контента.
+"""
 class ContentLoss(nn.Module):
     def __init__(self, target):
         super(ContentLoss, self).__init__()
@@ -57,6 +68,8 @@ class ContentLoss(nn.Module):
         return input
 
 
+"""\brief Класс расчёта ошибки стиля.
+"""
 class StyleLoss(nn.Module):
     def __init__(self, target_feature):
         super(StyleLoss, self).__init__()
@@ -68,6 +81,8 @@ class StyleLoss(nn.Module):
         return input
 
 
+"""\brief Нормализация.
+"""
 class Normalization(nn.Module):
     def __init__(self, mean, std):
         super(Normalization, self).__init__()
@@ -78,6 +93,10 @@ class Normalization(nn.Module):
         return (img - self.mean) / self.std
 
 
+"""\brief Создание модели переноса стиля.
+
+    В загруженную модель VGG-19 помещаются слои стиля и контента.
+"""
 def get_style_model_and_losses(cnn,
                                style_img, content_img,
                                normalization_mean=cnn_normalization_mean,
@@ -87,13 +106,13 @@ def get_style_model_and_losses(cnn,
 
     cnn = copy.deepcopy(cnn)
 
-    # нормализуем картинки
+    ## Нормализация картинок
     normalization = Normalization(normalization_mean, normalization_std).to(device)
 
     content_losses = []
     style_losses = []
 
-    # Начнем собирать нашу модель
+    ## Сбор модели
     model = nn.Sequential(normalization)
 
     i = 0
@@ -119,20 +138,19 @@ def get_style_model_and_losses(cnn,
         model.add_module(name, layer)
 
         if name in content_layers:
-            # добавляем в модель слой, считающий ошибку контента
+            ## Добавления слоя ошибки контента
             target = model(content_img).detach()
             content_loss = ContentLoss(target)
             model.add_module("content_loss_{}".format(i), content_loss)
             content_losses.append(content_loss)
 
         if name in style_layers:
-            # добавляем в модель слой, считающий ошибку стиля
+            ## добавление слоя ошибки стиля
             target_feature = model(style_img).detach()
             style_loss = StyleLoss(target_feature)
             model.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
 
-    # убираем лишние слои модели
     for i in range(len(model) - 1, -1, -1):
         if isinstance(model[i], ContentLoss) or isinstance(model[i], StyleLoss):
             break
@@ -142,11 +160,15 @@ def get_style_model_and_losses(cnn,
     return model, style_losses, content_losses
 
 
+"""\brief Оптимизатор.
+"""
 def get_input_optimizer(input_img):
     optimizer = optim.LBFGS([input_img.requires_grad_()])
     return optimizer
 
 
+"""\brief Непосредственно перенос стиля.
+"""
 def run_style_transfer(cnn, name,
                        content_img_size, style_img_size,
                        num_steps=config.epochs,
